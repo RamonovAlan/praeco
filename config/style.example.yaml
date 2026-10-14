@@ -1,0 +1,218 @@
+version: 2
+
+language:
+  primary: ru
+  configurable: true
+
+audience:
+  primary:
+    - hiring_it_companies
+    - hr_in_it_companies
+    - it_managers_and_directors
+    - project_and_product_leaders
+    - potential_business_partners
+  reader_context: professional_linkedin_feed
+
+goals:
+  primary:
+    - meaningful_organic_visibility
+    - relevant_professional_connections
+    - thoughtful_comments_and_discussion
+    - professional_reputation
+    - collaboration_and_project_inquiries
+    - event_and_speaking_invitations
+  avoid_optimizing_for:
+    - likes_without_relevance
+    - generic_virality
+    - artificial_controversy
+    - engagement_bait
+
+text:
+  target_characters:
+    min: 400
+    max: 900
+
+  opening:
+    main_tension_within_characters: 200
+    strong_hook: true
+    clickbait: false
+    artificial_drama: false
+
+  structure:
+    min_paragraphs: 3
+    max_paragraphs: 6
+    one_central_idea: true
+    logical_progression: true
+    natural_transitions: true
+    mandatory_template: false
+
+  tone:
+    confident: 0.8
+    direct: 0.8
+    provocative: 0.6
+    ironic: 0.3
+
+  voice:
+    experienced_professional: true
+    independent_thinking: true
+    conversational_russian: true
+    natural_rhythm: true
+    professional_depth: true
+    aggressive_self_promotion: false
+
+  editorial_quality:
+    every_sentence_adds_value: true
+    every_paragraph_advances_idea: true
+    remove_unnecessary_phrases: true
+    avoid_repetition: true
+    avoid_forced_conclusions: true
+    avoid_irrelevant_disclaimers: true
+    causal_consistency: true
+    read_aloud_check: true
+
+  engagement:
+    meaningful_tension: true
+    useful_insight: true
+    encourage_natural_discussion: true
+    forced_questions: false
+    manufactured_conflict: false
+
+  punctuation:
+    forbid_colon_in_body: true
+    preferred_dash: " - "
+    forbid_em_dash: true
+    forbid_en_dash: true
+    rewrite_when_needed: true
+
+  emoji: false
+  hashtags: false
+  call_to_action: optional
+
+  forbidden:
+    - invented_facts
+    - invented_personal_experience
+    - unsupported_results
+    - bureaucratic_cliches
+    - generic_ai_phrases
+    - irrelevant_expressions
+    - unnecessary_disclaimers
+    - rhetorical_filler
+    - insults
+    - repetitive_hooks
+    - engagement_bait
+    - forced_moral_lessons
+    - exaggerated_certainty
+
+  privacy_defaults:
+    anonymize_people: true
+    anonymize_clients: true
+    generalize_financial_figures: true
+    allow_explicitly_approved_public_facts: true
+    private_review_outside_body: true
+
+  editorial_benchmarks:
+    clarity_and_concision: true
+    specific_examples: true
+    business_consequences: true
+    independent_judgment: true
+    evidence_based_reasoning: true
+    constructive_contrarianism: true
+    imitate_specific_authors: false
+
+visual:
+  format: landscape
+  aspect_ratio: "3:2"
+
+  style:
+    primary: premium_minimalist_3d_editorial
+    secondary: conceptual_cinematic_still_life
+
+  reference_direction:
+    approved_visual_as_aesthetic_anchor: true
+    warm_architectural_minimalism: true
+    one_dominant_metaphor: true
+    recognizable_visual_identity: true
+    original_composition_each_post: true
+    literal_reference_reproduction: false
+
+  composition:
+    minimalism: high
+    visual_clutter: low
+    negative_space: high
+    dominant_subject_count: 1
+    supporting_objects: 0-2
+    clear_focal_point: true
+    strong_depth: true
+    balanced_asymmetry_allowed: true
+    mobile_feed_readability: true
+
+  materials:
+    - matte_stone
+    - brushed_metal
+    - ceramic
+    - frosted_glass
+    - realistic_tactile_surfaces
+
+  lighting:
+    - soft_cinematic_light
+    - warm_directional_light
+    - natural_shadows
+    - subtle_glow_when_meaningful
+    - controlled_reflections
+
+  palette:
+    dominant:
+      slate: "#303D41"
+      warm_stone: "#C7BBA9"
+      soft_neutral: "#E4DBCE"
+    accents:
+      muted_amber: "#DB9959"
+      jade: "#AEB8A0"
+      plum_noir: "#351E28"
+      cool_blue: "#D7EFFF"
+    accent_usage: restrained
+    all_colors_required: false
+    neon_default: false
+    strong_contrast_when_useful: true
+
+  trend_research:
+    sources:
+      - Pinterest
+      - Behance
+    review_frequency_days: 90
+    only_when_browsing_available: true
+    prioritize_recent_verified_work: true
+    prioritize_relevant_editorial_3d: true
+    evaluate_trends_against_brand_identity: true
+    preserve_visual_consistency: true
+    do_not_claim_unverified_trends: true
+    no_research_needed_for_every_post: true
+
+  scene_selection:
+    derive_from_post_tension: true
+    symbolic_not_overly_literal: true
+    environment_only_when_meaningful: true
+    industrial_environment_optional: true
+    sci_fi_environment_optional: true
+    avoid_generic_tech_cliches: true
+
+  forbidden:
+    - living_artist_style_imitation
+    - copied_reference_composition
+    - third_party_logos
+    - recognizable_people_without_permission
+    - embedded_text_unless_requested
+    - unnecessary_objects
+    - decorative_complexity
+    - unrelated_symbols
+    - default_cyberpunk
+    - excessive_neon
+    - visual_clickbait
+
+calibration:
+  status: hypothesis
+  evidence_required: true
+  approved_posts_as_reference: true
+  approved_images_as_reference: true
+  consider_actual_performance_data: true
+  update_only_after_owner_approval: true

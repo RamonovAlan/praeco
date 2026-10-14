@@ -1,0 +1,95 @@
+name: praeco
+
+services:
+  praeco:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_signal: SIGTERM
+    stop_grace_period: 75s
+    environment:
+      PRAECO_OWNER_TELEGRAM_USER_ID: "${PRAECO_OWNER_TELEGRAM_USER_ID:?set owner ID in .env}"
+      PRAECO_TELEGRAM_BOT_TOKEN: "${PRAECO_TELEGRAM_BOT_TOKEN:?set bot token in .env}"
+      PRAECO_DATABASE_PATH: /var/lib/praeco/data/praeco.sqlite3
+      PRAECO_MEDIA_DIR: /var/lib/praeco/media
+      PRAECO_MIGRATIONS_DIR: /app/migrations
+      PRAECO_PROVIDER_MODE: "${PRAECO_PROVIDER_MODE:-mock}"
+      PRAECO_AI_API_KEY: "${PRAECO_AI_API_KEY:-}"
+      PRAECO_TEXT_PROMPT_PATH: /app/prompts/text.md
+      PRAECO_IMAGE_PROMPT_PATH: /app/prompts/image.md
+      PRAECO_STYLE_PROFILE_PATH: /app/config/style.example.yaml
+      PRAECO_PUBLISHING_ENABLED: "false"
+      PRAECO_HEALTH_HOST: 0.0.0.0
+      PRAECO_HEALTH_PORT: "8080"
+      PRAECO_POLLING_TIMEOUT_SECONDS: "${PRAECO_POLLING_TIMEOUT_SECONDS:-30}"
+      PRAECO_IDLE_SLEEP_SECONDS: "${PRAECO_IDLE_SLEEP_SECONDS:-1}"
+      PRAECO_RETRY_SECONDS: "${PRAECO_RETRY_SECONDS:-5}"
+      PRAECO_PER_POST_WARNING_USD: "${PRAECO_PER_POST_WARNING_USD:-0.50}"
+      PRAECO_PER_POST_HARD_LIMIT_USD: "${PRAECO_PER_POST_HARD_LIMIT_USD:-0.75}"
+      PRAECO_MONTHLY_BUDGET_USD: "${PRAECO_MONTHLY_BUDGET_USD:-25}"
+      PRAECO_TEXT_DRAFTS_PER_REQUEST: "1"
+      PRAECO_IMAGE_OUTPUTS_PER_REQUEST: "1"
+      PRAECO_AUTOMATIC_PAID_RETRY_LIMIT: "0"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    volumes:
+      - praeco-state:/var/lib/praeco
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import os,urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PRAECO_HEALTH_PORT','8080')+'/health/ready',timeout=3).close()
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  backup:
+    profiles:
+      - maintenance
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: "no"
+    init: true
+    user: "10001:10001"
+    read_only: true
+    network_mode: none
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PRAECO_BACKUP_ENCRYPTION_KEY: "${PRAECO_BACKUP_ENCRYPTION_KEY:?set backup key in .env}"
+    entrypoint:
+      - python
+      - -m
+      - praeco.backup_cli
+    command:
+      - create
+      - --database
+      - /var/lib/praeco/data/praeco.sqlite3
+      - --media
+      - /var/lib/praeco/media
+      - --output
+      - /var/backups/praeco
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    volumes:
+      - praeco-state:/var/lib/praeco
+      - praeco-backups:/var/backups/praeco
+
+volumes:
+  praeco-state:
+  praeco-backups:

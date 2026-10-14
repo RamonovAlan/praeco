@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a focused improvement that preserves owner control.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What owner workflow is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Approval and privacy impact
+      description: Explain any external action, stored data, or new permission.
+    validations:
+      required: true

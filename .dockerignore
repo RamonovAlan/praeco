@@ -1,0 +1,15 @@
+# Deny the complete workspace by default so local credentials and runtime data
+# can never enter the Docker build context.
+*
+
+!src/
+!src/**
+!migrations/
+!migrations/**
+!prompts/
+!prompts/**
+!config/
+!config/**
+
+**/__pycache__/
+**/*.py[cod]
