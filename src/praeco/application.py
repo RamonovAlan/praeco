@@ -35,6 +35,7 @@ from praeco.openai_api import (
     UrllibOpenAITransport,
 )
 from praeco.outbox import DeliveryWorker
+from praeco.owner import OwnerExporter
 from praeco.providers import (
     ImageGenerationResult,
     ImageProvider,
@@ -151,6 +152,7 @@ class PraecoApplication:
     owner_id: int
     retry_seconds: float
     idle_seconds: float
+    telegram_client: TelegramBotApiClient = field(repr=False)
     stop_event: threading.Event = field(default_factory=threading.Event, repr=False)
     publication_repository: PublicationRepository | None = field(
         default=None,
@@ -166,6 +168,7 @@ class PraecoApplication:
             else nullcontext()
         )
         try:
+            self.telegram_client.configure_owner_commands(chat_id=self.owner_id)
             recover_orphaned_text_calls(
                 connection=self.connection,
                 owner_id=self.owner_id,
@@ -406,6 +409,11 @@ def build_application(
                 paid_ai_enabled=config.provider_mode == "openai",
                 publishing_enabled=config.publishing_enabled,
                 linkedin_oauth=linkedin_oauth,
+                owner_exporter=OwnerExporter(
+                    connection=connection,
+                    media_directory=config.media_directory,
+                ),
+                owner_id=config.owner_id,
             ),
         )
         worker = SingleWorker(
@@ -458,6 +466,7 @@ def build_application(
             owner_id=config.owner_id,
             retry_seconds=config.retry_seconds,
             idle_seconds=config.runtime_config.idle_sleep_seconds,
+            telegram_client=client,
             publication_repository=(
                 PublicationRepository(connection)
                 if config.publishing_enabled

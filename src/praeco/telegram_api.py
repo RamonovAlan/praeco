@@ -5,6 +5,7 @@
 import json
 import os
 import secrets
+import sqlite3
 import ssl
 import tempfile
 import urllib.error
@@ -20,6 +21,7 @@ from praeco.dispatcher import DispatchOutcome, DispatchResult, TelegramDispatche
 from praeco.linkedin import LinkedInOAuthError, LinkedInOAuthService
 from praeco.media import ImageValidationError, inspect_image_bytes
 from praeco.outbox import DeliveryKind, TelegramDelivery, TelegramSender
+from praeco.owner import OwnerDataError, OwnerExporter
 from praeco.telegram import (
     TelegramCallbackInput,
     TelegramImageInput,
@@ -34,6 +36,21 @@ _MAX_RESPONSE_BYTES = 2_000_000
 _MAX_PHOTO_BYTES = 10_000_000
 _DEFAULT_MAX_VOICE_BYTES = 20_000_000
 _DEFAULT_MAX_OWNER_IMAGE_BYTES = 10_000_000
+_MAX_OWNER_EXPORT_BYTES = 45_000_000
+
+OWNER_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("start", "Запустить бота и показать подсказку"),
+    ("new", "Начать создание нового поста"),
+    ("drafts", "Показать последние черновики"),
+    ("settings", "Показать настройки и лимиты"),
+    ("style", "Управлять правилами текста и визуала"),
+    ("costs", "Показать расходы за текущий месяц"),
+    ("export", "Скачать архив своих данных"),
+    ("linkedin", "Проверить или подключить LinkedIn"),
+    ("status", "Проверить состояние текущей работы"),
+    ("help", "Показать справку по командам"),
+    ("delete_data", "Посмотреть порядок удаления данных"),
+)
 
 
 class TelegramApiError(RuntimeError):
@@ -209,6 +226,30 @@ class TelegramBotApiClient:
             raise TelegramPayloadError("getUpdates result must be a list")
         return tuple(result)
 
+    def configure_owner_commands(self, *, chat_id: int) -> None:
+        """Register the Russian command list and expose Telegram's menu button."""
+
+        if chat_id == 0:
+            raise ValueError("chat_id is required")
+        commands = [
+            {"command": command, "description": description}
+            for command, description in OWNER_COMMANDS
+        ]
+        configured = self._call_result(
+            method="setMyCommands",
+            payload={
+                "commands": commands,
+                "scope": {"type": "chat", "chat_id": chat_id},
+                "language_code": "ru",
+            },
+        )
+        menu_configured = self._call_result(
+            method="setChatMenuButton",
+            payload={"chat_id": chat_id, "menu_button": {"type": "commands"}},
+        )
+        if configured is not True or menu_configured is not True:
+            raise TelegramPayloadError("telegram command menu was not accepted")
+
     def download_file(self, *, file_id: str, max_bytes: int) -> bytes:
         if not file_id.strip():
             raise ValueError("file_id must not be blank")
@@ -272,6 +313,37 @@ class TelegramBotApiClient:
                 max_bytes=_MAX_PHOTO_BYTES,
             )
         )
+        return _message_id(result)
+
+    def send_document(
+        self,
+        *,
+        chat_id: int,
+        content: bytes,
+        filename: str,
+        caption: str,
+    ) -> int:
+        if chat_id == 0 or not content or not filename.strip() or not caption.strip():
+            raise ValueError("chat_id, content, filename, and caption are required")
+        if len(content) > _MAX_OWNER_EXPORT_BYTES:
+            raise TelegramApiError("telegram export exceeds local size limit")
+        safe_name = Path(filename).name
+        if safe_name != filename or not safe_name.endswith(".zip"):
+            raise ValueError("export filename must be a safe ZIP name")
+        with tempfile.TemporaryDirectory(prefix="praeco-export-") as directory:
+            path = Path(directory) / safe_name
+            path.write_bytes(content)
+            path.chmod(0o600)
+            result = _telegram_result(
+                self._transport.call_multipart(
+                    method="sendDocument",
+                    fields={"chat_id": str(chat_id), "caption": caption},
+                    file_field="document",
+                    file_path=path,
+                    mime_type="application/zip",
+                    max_bytes=_MAX_OWNER_EXPORT_BYTES,
+                )
+            )
         return _message_id(result)
 
     def answer_callback_query(self, *, query_id: str) -> None:
@@ -427,13 +499,20 @@ class RussianStatusResponder:
         paid_ai_enabled: bool = False,
         publishing_enabled: bool = False,
         linkedin_oauth: LinkedInOAuthService | None = None,
+        owner_exporter: OwnerExporter | None = None,
+        owner_id: int | None = None,
     ) -> None:
         self._client = client
         self._paid_ai_enabled = paid_ai_enabled
         self._publishing_enabled = publishing_enabled
         self._linkedin_oauth = linkedin_oauth
+        self._owner_exporter = owner_exporter
+        self._owner_id = owner_id
 
     def respond(self, event: TelegramInput, result: DispatchResult) -> None:
+        if result.outcome is DispatchOutcome.EXPORT and result.owner_message is None:
+            self._respond_export(event)
+            return
         if result.outcome is DispatchOutcome.LINKEDIN_CONNECT:
             self._respond_linkedin(event)
             return
@@ -441,6 +520,36 @@ class RussianStatusResponder:
         if text is None:
             return
         self._client.send_message(chat_id=event.chat_id, text=text)
+
+    def _respond_export(self, event: TelegramInput) -> None:
+        if self._owner_exporter is None or self._owner_id is None:
+            self._client.send_message(
+                chat_id=event.chat_id,
+                text="Экспорт пока не настроен на сервере.",
+            )
+            return
+        try:
+            content = self._owner_exporter.build_zip(
+                owner_id=self._owner_id,
+                max_bytes=_MAX_OWNER_EXPORT_BYTES,
+            )
+        except (OSError, OwnerDataError, sqlite3.Error):
+            self._client.send_message(
+                chat_id=event.chat_id,
+                text=(
+                    "Не удалось собрать полный экспорт. Данные не изменены; "
+                    "проверьте локальные медиа и повторите позже."
+                ),
+            )
+            return
+        self._client.send_document(
+            chat_id=event.chat_id,
+            content=content,
+            filename="praeco-owner-export.zip",
+            caption=(
+                "Экспорт локальных данных Praeco. Секреты и OAuth-токены не включены."
+            ),
+        )
 
     def reject_media(self, event: TelegramInput, reason: MediaRejection) -> None:
         if isinstance(event, TelegramVoiceInput):
@@ -470,6 +579,8 @@ class RussianStatusResponder:
     def _message(self, result: DispatchResult) -> str | None:
         if result.outcome is DispatchOutcome.DUPLICATE:
             return None
+        if result.owner_message is not None:
+            return result.owner_message
         if result.outcome is DispatchOutcome.STATUS:
             ai_status = "включены" if self._paid_ai_enabled else "отключены, используются mocks"
             publish_status = "включена" if self._publishing_enabled else "отключена"
@@ -491,8 +602,16 @@ class RussianStatusResponder:
         messages = {
             DispatchOutcome.HELP: (
                 "Отправьте мысль текстом или голосом. Я подготовлю черновик и покажу "
-                "кнопки согласования. /new начинает новую мысль, /status показывает "
-                "режим работы, /linkedin подключает личный профиль."
+                "кнопки согласования.\n\n"
+                "/new — новая мысль\n"
+                "/drafts — последние черновики\n"
+                "/settings — настройки и лимиты\n"
+                "/style — постоянные правила текста и визуала\n"
+                "/costs — расходы за текущий месяц\n"
+                "/status — режим работы\n"
+                "/linkedin — подключение личного профиля\n"
+                "/export — архив ваших локальных данных\n"
+                "/delete_data — удаление после точного подтверждения."
             ),
             DispatchOutcome.WAITING_FOR_INPUT: "Готов к новой мысли. Пришлите текст или голос.",
             DispatchOutcome.TEXT_JOB_QUEUED: "Мысль принята. Готовлю черновик текста.",

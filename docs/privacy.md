@@ -24,9 +24,14 @@ encrypted connection data. Original media is stored on persistent disk. Local
 backup behavior is documented in [backup](backup.md); retention is selected by
 the operator.
 
-Owner-facing export and deletion commands are not yet complete. Until they are,
-data removal is an administrative operation that must preserve database and media
-consistency and be preceded by a verified backup when recovery is expected.
+`/export` creates a temporary owner-only ZIP containing local workflow data and
+checksum-verified original images. It excludes credentials, OAuth tokens, and
+Telegram file identifiers. `/delete_data` first explains its scope; only the
+literal `/delete_data CONFIRM` removes local drafts, versions, media, preference
+rules, usage history, and the LinkedIn connection. Processed-update deduplication
+records remain so an old Telegram update cannot be replayed. Published LinkedIn
+posts and provider-held data are not deleted. Existing backups retain deleted
+content until their configured rotation removes it.
 
 ## Public repository boundary
 

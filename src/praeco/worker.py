@@ -26,6 +26,7 @@ from praeco.jobs import (
     UsageMetadata,
 )
 from praeco.outbox import DeliveryKind, DeliveryRepository, DeliveryRequest
+from praeco.owner import OwnerRepository
 from praeco.providers import (
     ImageGenerationRequest,
     ImageGenerationResult,
@@ -104,6 +105,7 @@ class SingleWorker:
         self._image_editing = ImageEditingRepository(connection)
         self._voice_editing = VoiceEditingRepository(connection)
         self._deliveries = DeliveryRepository(connection)
+        self._owner = OwnerRepository(connection)
 
     def run_once(
         self,
@@ -325,11 +327,13 @@ class SingleWorker:
             or revision.base_text_version != lease.input_version
         ):
             raise WorkerInputError("text revision context is missing or stale")
+        style_rules = self._owner.active_rule_texts(scope="text")
         request = TextGenerationRequest(
             source_text=source.source_text,
             language=source.language,
             current_text=current.body if current else None,
             revision_comment=revision.comment if revision else None,
+            style_rules=style_rules,
         )
         self._jobs.mark_external_call_started(
             job_id=lease.job_id,
@@ -355,6 +359,7 @@ class SingleWorker:
             worker_id=worker_id,
             result=result,
             revision_comment=revision.comment if revision else None,
+            style_version=_style_version(style_rules),
             now=now,
         )
         return WorkerResult(
@@ -408,6 +413,7 @@ class SingleWorker:
         worker_id: str,
         result: TextGenerationResult,
         revision_comment: str | None,
+        style_version: str,
         now: str,
     ) -> None:
         draft_id = _required_draft_id(lease)
@@ -421,7 +427,7 @@ class SingleWorker:
                 body=result.body,
                 revision_comment=revision_comment,
                 prompt_version=_TEXT_PROMPT_VERSION,
-                style_version=_STYLE_PROFILE_VERSION,
+                style_version=style_version,
                 provider_model=result.metering.provider_model,
                 image_brief=result.image_brief,
                 now=now,
@@ -584,6 +590,11 @@ class SingleWorker:
             prompt = f"{text.image_brief}\nRequested revision: {revision.comment}"
             width = source.width
             height = source.height
+        image_rules = self._owner.active_rule_texts(scope="image")
+        if image_rules:
+            prompt += "\nActive owner visual rules:\n" + "\n".join(
+                f"- {rule}" for rule in image_rules
+            )
         request = ImageGenerationRequest(
             brief=text.image_brief,
             prompt=prompt,
@@ -772,6 +783,13 @@ def _required_draft_id(lease: JobLease) -> str:
     if lease.draft_id is None:
         raise WorkerInputError("job has no draft")
     return lease.draft_id
+
+
+def _style_version(style_rules: tuple[str, ...]) -> str:
+    if not style_rules:
+        return _STYLE_PROFILE_VERSION
+    digest = hashlib.sha256("\n".join(style_rules).encode("utf-8")).hexdigest()[:12]
+    return f"{_STYLE_PROFILE_VERSION}+owner-{digest}"
 
 
 def _safe_id(value: str) -> str:

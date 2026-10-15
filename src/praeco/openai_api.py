@@ -159,7 +159,7 @@ class UrllibOpenAITransport:
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": content_type,
-                "User-Agent": "Praeco/0.0.1",
+                "User-Agent": "Praeco/0.1.0",
             },
             method="POST",
         )

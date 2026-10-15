@@ -54,6 +54,9 @@ of the LinkedIn post body.
 - Official LinkedIn OIDC, Images API, and Posts API integration.
 - Duplicate protection and a non-retryable `PUBLISH_UNKNOWN` boundary.
 - Per-draft usage accounting and configurable per-post/monthly spending limits.
+- A Telegram command menu plus owner commands for recent drafts, settings,
+  monthly cost, explicit versioned text/image preferences, credential-free data
+  export, and confirmed local data deletion.
 - SQLite-backed jobs and delivery outbox that survive process restarts.
 - Hardened single-container deployment, health checks, encrypted backups, and
   restore verification.
@@ -176,10 +179,9 @@ private content.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Near-term work focuses on installability,
-preference-memory controls, owner data-management commands, and a safe `v0.1.0`
-release candidate. Additional official Publisher adapters come only
-after the LinkedIn-first baseline is stable.
+See [ROADMAP.md](ROADMAP.md). Near-term work focuses on a safe `v0.1.0` release
+and feedback from real self-hosted installations. Additional official Publisher
+adapters come only after the LinkedIn-first baseline is stable.
 
 ## Contact and support
 

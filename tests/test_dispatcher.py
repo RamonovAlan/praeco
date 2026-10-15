@@ -151,6 +151,108 @@ def test_command_is_claimed_without_creating_work_and_duplicate_is_ignored(
     assert connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
 
 
+def test_owner_overview_and_versioned_style_commands_create_no_paid_work(
+    tmp_path: Path,
+) -> None:
+    dispatcher, connection = setup(tmp_path)
+
+    empty = dispatch(
+        dispatcher,
+        text_event(update_id=10, text="/drafts", command="/drafts"),
+    )
+    settings = dispatch(
+        dispatcher,
+        text_event(update_id=11, text="/settings", command="/settings"),
+    )
+    costs = dispatch(
+        dispatcher,
+        text_event(update_id=12, text="/costs", command="/costs"),
+    )
+    saved = dispatch(
+        dispatcher,
+        text_event(
+            update_id=13,
+            text="/style text Использовать короткие абзацы",
+            command="/style",
+        ),
+    )
+    listed = dispatch(
+        dispatcher,
+        text_event(update_id=14, text="/style", command="/style"),
+    )
+    disabled = dispatch(
+        dispatcher,
+        text_event(update_id=15, text="/style off 1", command="/style"),
+    )
+    enabled = dispatch(
+        dispatcher,
+        text_event(update_id=16, text="/style on 1", command="/style"),
+    )
+
+    assert empty.outcome is DispatchOutcome.DRAFTS
+    assert empty.owner_message is not None and "Черновиков пока нет" in empty.owner_message
+    assert settings.owner_message is not None and "$25.00" in settings.owner_message
+    assert costs.owner_message is not None and "Учтено: $0.000000" in costs.owner_message
+    assert saved.owner_message is not None and "Правило #1 сохранено" in saved.owner_message
+    assert listed.owner_message is not None
+    assert "Использовать короткие абзацы" in listed.owner_message
+    assert disabled.owner_message == "Правило #1 отключено."
+    assert enabled.owner_message == "Правило #1 включено."
+    preference = connection.execute(
+        "SELECT scope, version, active FROM preference_rules WHERE id = 1"
+    ).fetchone()
+    assert tuple(preference) == ("text", 1, 1)
+    assert connection.execute("SELECT COUNT(*) FROM drafts").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+
+
+def test_delete_data_requires_exact_confirmation_and_removes_owner_content(
+    tmp_path: Path,
+) -> None:
+    dispatcher, connection = setup(tmp_path)
+    dispatch(dispatcher, text_event(update_id=20, text="Private thought"))
+    dispatch(
+        dispatcher,
+        text_event(
+            update_id=21,
+            text="/style text Keep it short",
+            command="/style",
+        ),
+    )
+
+    warning = dispatch(
+        dispatcher,
+        text_event(update_id=22, text="/delete_data", command="/delete_data"),
+    )
+    wrong = dispatch(
+        dispatcher,
+        text_event(
+            update_id=23,
+            text="/delete_data confirm",
+            command="/delete_data",
+        ),
+    )
+
+    assert warning.outcome is DispatchOutcome.DELETE_DATA
+    assert warning.owner_message is not None and "/delete_data CONFIRM" in warning.owner_message
+    assert wrong.owner_message is not None and "/delete_data CONFIRM" in wrong.owner_message
+    assert connection.execute("SELECT COUNT(*) FROM drafts").fetchone()[0] == 1
+    deleted = dispatch(
+        dispatcher,
+        text_event(
+            update_id=24,
+            text="/delete_data CONFIRM",
+            command="/delete_data",
+        ),
+    )
+
+    assert deleted.outcome is DispatchOutcome.DELETE_DATA
+    assert deleted.owner_message is not None and "данные Praeco удалены" in deleted.owner_message
+    assert connection.execute("SELECT COUNT(*) FROM drafts").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM preference_rules").fetchone()[0] == 0
+
+
 def test_linkedin_command_is_owner_only_and_creates_no_provider_work(tmp_path: Path) -> None:
     dispatcher, connection = setup(tmp_path)
 

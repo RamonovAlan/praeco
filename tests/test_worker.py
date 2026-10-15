@@ -8,6 +8,7 @@ from praeco.dispatcher import DispatchCostEstimates, DispatchOutcome, TelegramDi
 from praeco.domain import DraftState
 from praeco.drafts import DraftRepository
 from praeco.outbox import DeliveryKind, DeliveryRepository
+from praeco.owner import OwnerRepository
 from praeco.providers import (
     ImageGenerationResult,
     MockImageProvider,
@@ -148,6 +149,58 @@ def test_text_result_is_persisted_and_billed_before_delivery(tmp_path: Path) -> 
     assert text_version["style_version"] == "style-v2"
     assert usage["billing_status"] == "ACTUAL"
     assert usage["actual_cost_microusd"] == 10_000
+
+
+def test_active_owner_rules_are_bound_to_future_text_and_image_calls(
+    tmp_path: Path,
+) -> None:
+    connection, dispatcher, worker, text_provider, _, image_provider = setup(tmp_path)
+    owner = OwnerRepository(connection)
+    owner.add_preference(
+        scope="text",
+        rule="Use short paragraphs",
+        now=NOW,
+    )
+    owner.add_preference(
+        scope="image",
+        rule="Use a warm neutral background",
+        now=NOW,
+    )
+    dispatcher.dispatch(
+        TelegramTextInput(
+            update_id=90,
+            actor_id=OWNER_ID,
+            chat_id=OWNER_ID,
+            message_id=90,
+            text="Synthetic thought",
+        ),
+        now=NOW,
+        billing_month="2026-10",
+    )
+
+    run(worker)
+
+    assert text_provider.requests[0].style_rules == ("Use short paragraphs",)
+    style_version = connection.execute(
+        "SELECT style_version FROM text_versions WHERE draft_id = 'tg-90'"
+    ).fetchone()[0]
+    assert style_version.startswith("style-v2+owner-")
+    dispatcher.dispatch(
+        TelegramCallbackInput(
+            update_id=91,
+            actor_id=OWNER_ID,
+            chat_id=OWNER_ID,
+            message_id=91,
+            query_id="query-91",
+            data="txt_ok:tg-90:1",
+        ),
+        now=NOW,
+        billing_month="2026-10",
+    )
+
+    run(worker)
+
+    assert "Use a warm neutral background" in image_provider.requests[0].prompt
 
 
 def test_voice_transcript_persists_then_queues_exactly_one_text_job(tmp_path: Path) -> None:

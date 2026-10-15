@@ -1,9 +1,12 @@
 """Transactional Telegram-to-domain dispatch without network or provider calls."""
 
+# ruff: noqa: RUF001 -- Russian owner-facing interface text is intentional.
+
 import hashlib
 import re
 import sqlite3
-from dataclasses import dataclass
+from contextlib import suppress
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -29,6 +32,7 @@ from praeco.editing import (
 )
 from praeco.jobs import JobRepository, PaidJobRequest, QueueOutcome
 from praeco.outbox import DeliveryKind, DeliveryRepository, DeliveryRequest
+from praeco.owner import DraftSummary, OwnerDataError, OwnerRepository, PreferenceRule
 from praeco.publication import PublicationError, PublicationRepository
 from praeco.storage import immediate_transaction
 from praeco.telegram import (
@@ -55,6 +59,12 @@ class DispatchOutcome(StrEnum):
     WELCOME = "WELCOME"
     HELP = "HELP"
     STATUS = "STATUS"
+    DRAFTS = "DRAFTS"
+    SETTINGS = "SETTINGS"
+    STYLE = "STYLE"
+    COSTS = "COSTS"
+    EXPORT = "EXPORT"
+    DELETE_DATA = "DELETE_DATA"
     LINKEDIN_CONNECT = "LINKEDIN_CONNECT"
     WAITING_FOR_INPUT = "WAITING_FOR_INPUT"
     TEXT_JOB_QUEUED = "TEXT_JOB_QUEUED"
@@ -89,6 +99,9 @@ class DispatchResult:
     job_id: int | None = None
     publication_id: int | None = None
     budget_warning: bool = False
+    owner_message: str | None = field(default=None, repr=False)
+    deleted_media_paths: tuple[str, ...] = field(default=(), repr=False)
+    deleted_draft_ids: tuple[str, ...] = field(default=(), repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +157,7 @@ class TelegramDispatcher:
         self._image_editing = ImageEditingRepository(connection)
         self._voice_editing = VoiceEditingRepository(connection)
         self._deliveries = DeliveryRepository(connection)
+        self._owner = OwnerRepository(connection)
         self._publishing_enabled = publishing_enabled
         self._publications = PublicationRepository(connection)
 
@@ -169,29 +183,30 @@ class TelegramDispatcher:
         try:
             with immediate_transaction(self._connection):
                 if not self._updates.claim_once(update_id=event.update_id, claimed_at=now):
-                    return DispatchResult(outcome=DispatchOutcome.DUPLICATE)
-                if isinstance(event, TelegramTextInput):
-                    return self._dispatch_text(
+                    result = DispatchResult(outcome=DispatchOutcome.DUPLICATE)
+                elif isinstance(event, TelegramTextInput):
+                    result = self._dispatch_text(
                         event=event,
                         now=now,
                         billing_month=billing_month,
                     )
-                if isinstance(event, TelegramVoiceInput):
-                    return self._dispatch_voice(
+                elif isinstance(event, TelegramVoiceInput):
+                    result = self._dispatch_voice(
                         event=event,
                         now=now,
                         billing_month=billing_month,
                     )
-                if isinstance(event, TelegramImageInput):
-                    return self._dispatch_image(event=event, now=now)
-                if callback is None:
-                    raise RuntimeError("parsed callback action is missing")
-                return self._dispatch_callback(
-                    event=event,
-                    action=callback,
-                    now=now,
-                    billing_month=billing_month,
-                )
+                elif isinstance(event, TelegramImageInput):
+                    result = self._dispatch_image(event=event, now=now)
+                else:
+                    if callback is None:
+                        raise RuntimeError("parsed callback action is missing")
+                    result = self._dispatch_callback(
+                        event=event,
+                        action=callback,
+                        now=now,
+                        billing_month=billing_month,
+                    )
         except (
             DraftNotFoundError,
             DraftPersistenceConflict,
@@ -200,6 +215,7 @@ class TelegramDispatcher:
             PublicationError,
         ):
             return self._claim_rejected(event=event, now=now)
+        return self._remove_deleted_media(result)
 
     def _dispatch_text(
         self,
@@ -236,6 +252,13 @@ class TelegramDispatcher:
                         now=now,
                     )
                     self._image_editing.consume(pending=pending_image)
+            owner_command = self._dispatch_owner_command(
+                event=event,
+                now=now,
+                billing_month=billing_month,
+            )
+            if owner_command is not None:
+                return owner_command
             command_outcomes = {
                 "/start": DispatchOutcome.WELCOME,
                 "/help": DispatchOutcome.HELP,
@@ -326,6 +349,173 @@ class TelegramDispatcher:
             queue_outcome=queued.outcome,
             job_id=queued.job_id,
         )
+
+    def _dispatch_owner_command(
+        self,
+        *,
+        event: TelegramTextInput,
+        now: str,
+        billing_month: str,
+    ) -> DispatchResult | None:
+        if event.command == "/drafts":
+            drafts = self._owner.recent_drafts(owner_id=self._owner_id)
+            return DispatchResult(
+                outcome=DispatchOutcome.DRAFTS,
+                owner_message=_render_drafts(drafts),
+            )
+        if event.command == "/settings":
+            return DispatchResult(
+                outcome=DispatchOutcome.SETTINGS,
+                owner_message=_render_settings(self._budget_policy),
+            )
+        if event.command == "/costs":
+            summary = self._owner.cost_summary(billing_month=billing_month)
+            return DispatchResult(
+                outcome=DispatchOutcome.COSTS,
+                owner_message=(
+                    f"Расходы за {billing_month}:\n"
+                    f"Учтено: ${summary.accounted_usd:.6f}\n"
+                    f"Зарезервировано: ${summary.reserved_usd:.6f}\n"
+                    f"Завершённых вызовов: {summary.completed_calls}\n"
+                    f"Вызовов с неизвестным точным списанием: "
+                    f"{summary.unknown_billed_calls}\n"
+                    f"Лимит месяца: ${self._budget_policy.monthly_hard_limit_usd:.2f}"
+                ),
+            )
+        if event.command == "/export":
+            if _command_argument(event.text):
+                return DispatchResult(
+                    outcome=DispatchOutcome.EXPORT,
+                    owner_message="Используйте команду без параметров: /export",
+                )
+            return DispatchResult(outcome=DispatchOutcome.EXPORT)
+        if event.command == "/delete_data":
+            argument = _command_argument(event.text)
+            if argument != "CONFIRM":
+                return DispatchResult(
+                    outcome=DispatchOutcome.DELETE_DATA,
+                    owner_message=(
+                        "Удаление затронет все локальные черновики, версии, изображения, "
+                        "правила, историю расходов и подключение LinkedIn. "
+                        "Опубликованные посты в LinkedIn не удалятся.\n"
+                        "Для необратимого удаления отправьте точно: /delete_data CONFIRM"
+                    ),
+                )
+            plan = self._owner.delete_all_owner_data(owner_id=self._owner_id)
+            return DispatchResult(
+                outcome=DispatchOutcome.DELETE_DATA,
+                owner_message=(
+                    "Локальные данные Praeco удалены. Опубликованные посты в LinkedIn "
+                    "не изменялись. Для новых публикаций подключите LinkedIn заново."
+                ),
+                deleted_media_paths=plan.media_paths,
+                deleted_draft_ids=plan.draft_ids,
+            )
+        if event.command != "/style":
+            return None
+        return self._dispatch_style_command(event=event, now=now)
+
+    def _dispatch_style_command(
+        self,
+        *,
+        event: TelegramTextInput,
+        now: str,
+    ) -> DispatchResult:
+        parts = event.text.strip().split(maxsplit=2)
+        if len(parts) == 1:
+            return DispatchResult(
+                outcome=DispatchOutcome.STYLE,
+                owner_message=_render_preferences(self._owner.preferences()),
+            )
+        if len(parts) != 3:
+            return DispatchResult(
+                outcome=DispatchOutcome.STYLE,
+                owner_message=_style_usage(),
+            )
+        action = parts[1].casefold()
+        value = parts[2]
+        try:
+            if action in {"text", "image"}:
+                preference = self._owner.add_preference(
+                    scope=action,
+                    rule=value,
+                    now=now,
+                )
+                return DispatchResult(
+                    outcome=DispatchOutcome.STYLE,
+                    owner_message=(
+                        f"Правило #{preference.rule_id} сохранено для "
+                        f"{'текста' if action == 'text' else 'визуала'}. "
+                        "Оно применяется только к будущим генерациям."
+                    ),
+                )
+            if action in {"off", "on"}:
+                preference = self._owner.set_preference_active(
+                    rule_id=int(value),
+                    active=action == "on",
+                )
+                state = "включено" if preference.active else "отключено"
+                return DispatchResult(
+                    outcome=DispatchOutcome.STYLE,
+                    owner_message=f"Правило #{preference.rule_id} {state}.",
+                )
+        except (OwnerDataError, ValueError):
+            return DispatchResult(
+                outcome=DispatchOutcome.STYLE,
+                owner_message=(
+                    "Не удалось изменить правила. Проверьте ID, дубликаты и длину "
+                    "правила (до 500 символов).\n" + _style_usage()
+                ),
+            )
+        return DispatchResult(
+            outcome=DispatchOutcome.STYLE,
+            owner_message=_style_usage(),
+        )
+
+    def _remove_deleted_media(self, result: DispatchResult) -> DispatchResult:
+        if not result.deleted_media_paths and not result.deleted_draft_ids:
+            return result
+        if self._media_directory is None:
+            return replace(
+                result,
+                owner_message=(
+                    "Данные в БД удалены, но каталог медиа не настроен для очистки."
+                ),
+            )
+        media_root = self._media_directory.resolve()
+        candidates = [media_root / path for path in result.deleted_media_paths]
+        candidates.extend(
+            media_root
+            / "incoming"
+            / f"{hashlib.sha256(draft_id.encode('utf-8')).hexdigest()[:20]}.ogg"
+            for draft_id in result.deleted_draft_ids
+        )
+        failures = 0
+        parents: set[Path] = set()
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            if not resolved.is_relative_to(media_root):
+                failures += 1
+                continue
+            parents.add(resolved.parent)
+            try:
+                resolved.unlink(missing_ok=True)
+            except OSError:
+                failures += 1
+        for parent in sorted(parents, key=lambda path: len(path.parts), reverse=True):
+            if parent == media_root:
+                continue
+            with suppress(OSError):
+                parent.rmdir()
+        if failures:
+            return replace(
+                result,
+                owner_message=(
+                    "Данные в БД удалены, но часть локальных медиа не удалось удалить. "
+                    "Проверьте каталог хранения перед следующим backup."
+                ),
+            )
+        return result
 
     def _dispatch_voice(
         self,
@@ -1041,6 +1231,78 @@ def _parse_callback_action(data: str) -> _CallbackAction:
 
 def _draft_id(update_id: int) -> str:
     return f"tg-{update_id}"
+
+
+def _command_argument(text: str) -> str:
+    parts = text.strip().split(maxsplit=1)
+    return parts[1].strip() if len(parts) == 2 else ""
+
+
+def _render_drafts(drafts: tuple[DraftSummary, ...]) -> str:
+    if not drafts:
+        return "Черновиков пока нет. Отправьте новую мысль текстом или голосом."
+    state_labels = {
+        "RECEIVED": "принят",
+        "TEXT_GENERATING": "создаётся текст",
+        "TEXT_REVIEW": "проверка текста",
+        "TEXT_APPROVED": "текст утверждён",
+        "IMAGE_GENERATING": "создаётся изображение",
+        "IMAGE_REVIEW": "проверка изображения",
+        "READY_TO_PUBLISH": "готов к публикации",
+        "PUBLISHING": "публикуется",
+        "PUBLISHED": "опубликован",
+        "WAITING_FOR_INPUT": "ожидает правки",
+        "CANCELLED": "отменён",
+        "FAILED_RECOVERABLE": "нужна повторная попытка",
+        "PUBLISH_UNKNOWN": "результат публикации неизвестен",
+    }
+    lines = ["Последние черновики:"]
+    for draft in drafts:
+        label = state_labels.get(draft.state, draft.state.lower())
+        lines.append(
+            f"• {draft.draft_id} — {label}; текст v{draft.text_version}, "
+            f"изображение v{draft.image_version}; {draft.updated_at}"
+        )
+    return "\n".join(lines)
+
+
+def _render_settings(policy: BudgetPolicy) -> str:
+    return (
+        "Настройки Praeco:\n"
+        "Язык постов: русский\n"
+        f"Черновиков текста за запрос: {policy.text_drafts_per_request}\n"
+        f"Изображений за запрос: {policy.image_outputs_per_request}\n"
+        f"Автоповторов платных вызовов: {policy.automatic_paid_retry_limit}\n"
+        f"Предупреждение на пост: ${policy.per_post_warning_usd:.2f}\n"
+        f"Стоп на пост: ${policy.per_post_hard_limit_usd:.2f}\n"
+        f"Стоп на месяц: ${policy.monthly_hard_limit_usd:.2f}\n"
+        "Правила автора: /style"
+    )
+
+
+def _render_preferences(preferences: tuple[PreferenceRule, ...]) -> str:
+    if not preferences:
+        return "Постоянных правил автора пока нет.\n" + _style_usage()
+    lines = ["Постоянные правила автора:"]
+    for preference in preferences:
+        scope = "текст" if preference.scope == "text" else "визуал"
+        state = "вкл" if preference.active else "выкл"
+        lines.append(
+            f"#{preference.rule_id} · {scope} · v{preference.version} · "
+            f"{state}: {preference.rule}"
+        )
+    lines.append(_style_usage())
+    return "\n".join(lines)
+
+
+def _style_usage() -> str:
+    return (
+        "Команды:\n"
+        "/style text <правило>\n"
+        "/style image <правило>\n"
+        "/style off <ID>\n"
+        "/style on <ID>"
+    )
 
 
 def _required_pending_image(

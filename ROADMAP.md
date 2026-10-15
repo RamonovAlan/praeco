@@ -3,16 +3,14 @@
 This roadmap describes intent, not a delivery promise. Security and the owner's
 explicit approval remain higher priority than feature count.
 
-## Private beta and release candidate
+## Completed private-beta baseline
 
-- Complete 5–7 days of owner feedback-driven use.
-- Verify restart behavior after successful publication without creating duplicates.
-- Finish the required owner data-management and preference-memory controls.
-- Validate clean installation with credentials belonging to a second tester.
-- Separate production backup automation from the future public source boundary.
-- Complete the security/history audit, dependency notices, SBOM, and public
-  release checklist.
-- Apply Apache-2.0 and prepare a separate clean-history public repository.
+- Owner-tested text, voice, revision, image, and exact LinkedIn publication flow.
+- Restart-safe jobs, delivery, publication deduplication, and spending guards.
+- Owner data-management, preference memory, and discoverable Telegram commands.
+- Private production operations separated from the curated public source boundary.
+- Security/history audit, dependency notices, SBOM, Apache-2.0, and clean-history
+  public repository.
 
 ## `v0.1.0`
 

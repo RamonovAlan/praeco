@@ -13,6 +13,7 @@ from praeco.dispatcher import (
 )
 from praeco.drafts import DraftRepository
 from praeco.outbox import DeliveryKind, TelegramDelivery
+from praeco.owner import OwnerExporter
 from praeco.storage import apply_migrations, connect_database
 from praeco.telegram import TelegramCallbackInput, TelegramTextInput, parse_telegram_update
 from praeco.telegram_api import (
@@ -234,6 +235,40 @@ def test_client_builds_bounded_long_poll_request() -> None:
         "timeout": 30,
         "limit": 20,
         "allowed_updates": ["message", "callback_query"],
+    }
+
+
+def test_client_configures_russian_owner_command_menu() -> None:
+    transport = FakeTransport()
+    transport.json_responses["setMyCommands"] = {"ok": True, "result": True}
+    transport.json_responses["setChatMenuButton"] = {"ok": True, "result": True}
+
+    TelegramBotApiClient(transport).configure_owner_commands(chat_id=OWNER_ID)
+
+    methods = [method for method, _payload in transport.json_calls]
+    assert methods == ["setMyCommands", "setChatMenuButton"]
+    commands_payload = transport.json_calls[0][1]
+    assert commands_payload["scope"] == {"type": "chat", "chat_id": OWNER_ID}
+    assert commands_payload["language_code"] == "ru"
+    commands = commands_payload["commands"]
+    assert isinstance(commands, list)
+    assert {entry["command"] for entry in commands} == {
+        "start",
+        "new",
+        "drafts",
+        "settings",
+        "style",
+        "costs",
+        "export",
+        "linkedin",
+        "status",
+        "help",
+        "delete_data",
+    }
+    assert all(" — " not in entry["description"] for entry in commands)
+    assert transport.json_calls[1][1] == {
+        "chat_id": OWNER_ID,
+        "menu_button": {"type": "commands"},
     }
 
 
@@ -464,6 +499,32 @@ def test_russian_status_responder_reports_safe_runtime_mode() -> None:
         "Praeco работает. Реальные AI-вызовы отключены, используются mocks. "
         "Публикация в LinkedIn отключена. LinkedIn OAuth не настроен."
     )
+
+
+def test_owner_export_is_sent_as_temporary_zip_document(tmp_path: Path) -> None:
+    connection = connect_database(tmp_path / "praeco.sqlite3")
+    apply_migrations(connection, MIGRATIONS)
+    transport = FakeTransport()
+    responder = RussianStatusResponder(
+        TelegramBotApiClient(transport),
+        owner_exporter=OwnerExporter(
+            connection=connection,
+            media_directory=tmp_path / "media",
+        ),
+        owner_id=OWNER_ID,
+    )
+
+    responder.respond(
+        parse_text_event(text="/export"),
+        DispatchResult(outcome=DispatchOutcome.EXPORT),
+    )
+
+    assert len(transport.multipart_calls) == 1
+    call = transport.multipart_calls[0]
+    assert call["method"] == "sendDocument"
+    assert call["file_field"] == "document"
+    assert call["mime_type"] == "application/zip"
+    assert not Path(call["file_path"]).exists()
 
 
 def test_polling_dispatches_text_and_advances_offset(tmp_path: Path) -> None:

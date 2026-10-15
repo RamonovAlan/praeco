@@ -14,6 +14,8 @@ semantic versioning for public release candidates.
 - Durable SQLite jobs, Telegram delivery outbox, and duplicate protection.
 - Hardened container deployment, health checks, encrypted backups, and restore
   verification.
+- Discoverable Russian Telegram command menu, owner preference memory, monthly
+  cost summary, credential-free export, and confirmed local-data deletion.
 
 ### Security
 
