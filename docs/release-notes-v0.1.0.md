@@ -1,7 +1,6 @@
 # Praeco v0.1.0
 
-Status: release candidate; the tag and GitHub Release are created only after the
-final verification pass.
+Released: 2026-10-15.
 
 Praeco is a self-hosted, Telegram-first AI workflow for turning a private text or
 voice thought into a reviewed LinkedIn post with an original visual. Every text,

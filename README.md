@@ -11,9 +11,8 @@ owner reviews every revision, approves the exact text and image versions, and is
 the only person who can trigger publication. AI prepares the material; it never
 receives permission to publish by itself.
 
-> Public source preview. The owner-operated production deployment, credentials,
-> data, backups, and operational history remain private. `v0.1.0` is not tagged
-> until the remaining release gates are completed or explicitly deferred.
+> Public source release. The owner-operated production deployment, credentials,
+> data, backups, and operational history remain private.
 
 [Русская версия](README.ru.md)
 

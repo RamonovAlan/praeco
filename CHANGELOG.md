@@ -5,6 +5,10 @@ semantic versioning for public release candidates.
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.1.0] - 2026-10-15
+
 ### Added
 
 - Owner-only Telegram workflow for text and voice thoughts.
@@ -23,6 +27,5 @@ semantic versioning for public release candidates.
   button for the exact approved snapshot.
 - Credentials, runtime content, original media, and backups remain outside Git.
 
-The source preview is distributed under Apache-2.0. No public version tag has
-been created yet.
+The source is distributed under Apache-2.0.
 
