@@ -21,7 +21,7 @@ praeco-backup = "praeco.backup_cli:main"
 [dependency-groups]
 dev = [
   "mypy==1.18.2",
-  "pytest==8.4.2",
+  "pytest==9.1.1",
   "ruff==0.14.0",
 ]
 
