@@ -1,4 +1,6 @@
 from decimal import Decimal
+
+# ruff: noqa: RUF001 -- Russian owner revision test text is intentional.
 from pathlib import Path
 
 import pytest
@@ -357,6 +359,37 @@ def test_image_revision_uses_bound_original_and_creates_a_new_version(
         "SELECT local_path FROM image_versions WHERE draft_id = 'tg-30' AND version = 2"
     ).fetchone()[0]
     assert (tmp_path / "media" / second_relative_path).is_file()
+
+    dispatcher.dispatch(
+        TelegramCallbackInput(
+            update_id=34,
+            actor_id=OWNER_ID,
+            chat_id=OWNER_ID,
+            message_id=34,
+            query_id="query-34",
+            data="img_rev:tg-30:2",
+        ),
+        now=NOW,
+        billing_month="2026-10",
+    )
+    dispatcher.dispatch(
+        TelegramTextInput(
+            update_id=35,
+            actor_id=OWNER_ID,
+            chat_id=OWNER_ID,
+            message_id=35,
+            text="Не подходит, измени концепт полностью",
+            reply_to_message_id=34,
+        ),
+        now=NOW,
+        billing_month="2026-10",
+    )
+    run(worker)
+
+    reset_request = image_provider.requests[2]
+    assert reset_request.source_image_path is None
+    assert "concept reset" in reset_request.prompt
+    assert reset_request.approved_text == "Synthetic generated post"
 
 
 def test_missing_voice_file_fails_without_calling_provider(tmp_path: Path) -> None:

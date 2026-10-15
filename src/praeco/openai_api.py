@@ -159,7 +159,7 @@ class UrllibOpenAITransport:
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": content_type,
-                "User-Agent": "Praeco/0.1.0",
+                "User-Agent": "Praeco/0.1.1",
             },
             method="POST",
         )
@@ -297,6 +297,7 @@ class OpenAIProvider:
     def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         prompt = (
             f"{self._config.image_prompt}\n\n"
+            f"Approved post text:\n{request.approved_text}\n\n"
             f"Approved private brief:\n{request.brief}\n\n"
             f"Current generation request:\n{request.prompt}"
         )

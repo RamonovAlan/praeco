@@ -80,6 +80,7 @@ def test_mock_image_provider_returns_original_bytes_once() -> None:
     provider = MockImageProvider(result)
     request = ImageGenerationRequest(
         brief="Синтетический образ",
+        approved_text="Синтетический утверждённый пост",
         prompt="Без логотипов и реальных людей",
         width=1200,
         height=1200,

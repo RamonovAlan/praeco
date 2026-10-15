@@ -303,6 +303,9 @@ class DeliveryRepository:
                 draft_id=lease.draft_id,
                 body=str(row["body"]),
                 approve_callback=f"txt_ok:{lease.draft_id}:{lease.text_version}",
+                owner_upload_callback=(
+                    f"txt_upload:{lease.draft_id}:{lease.text_version}"
+                ),
                 cancel_callback=f"txt_cancel:{lease.draft_id}:{lease.text_version}",
                 revision_callback=f"txt_rev:{lease.draft_id}:{lease.text_version}",
                 manual_edit_callback=f"txt_edit:{lease.draft_id}:{lease.text_version}",

@@ -57,6 +57,8 @@ entry as `/command — short purpose`, so commands can be discovered and sent
 without memorizing them.
 
 - `/new` starts a new thought and safely leaves any pending edit binding;
+- `/text <post>` stores an owner-written post and opens text review without a
+  text-generation call;
 - `/drafts` shows bounded metadata for the ten most recent drafts without
   echoing their private content;
 - `/settings` shows language, generation counts, retry policy, and budget limits;

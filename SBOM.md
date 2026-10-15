@@ -9,7 +9,7 @@ The final release must regenerate this inventory from the frozen release commit.
 
 | Component | Version | Relationship | Environment |
 | --- | ---: | --- | --- |
-| praeco | 0.1.0 | root application | runtime |
+| praeco | 0.1.1 | root application | runtime |
 | cryptography | 46.0.7 | direct dependency of praeco | runtime |
 | cffi | 2.1.1 | dependency of cryptography | runtime |
 | pycparser | 3.11 | dependency of cffi | runtime |

@@ -31,6 +31,7 @@ def test_initial_migration_creates_required_tables(tmp_path: Path) -> None:
             11,
             12,
             13,
+            14,
         )
         assert apply_migrations(connection, MIGRATIONS) == ()
         tables = {

@@ -7,6 +7,21 @@ semantic versioning for public release candidates.
 
 No changes yet.
 
+## [0.1.1] - 2026-10-15
+
+### Added
+
+- `/text <post>` stores owner-written post text without a text-generation call.
+- Text review can now approve the text and request an owner image before any
+  generated image, avoiding the image-generation charge.
+
+### Changed
+
+- Image prompts now include the exact approved post and derive several semantic
+  angles before choosing a visual metaphor.
+- Explicit requests for a different concept start a fresh generation instead of
+  editing and inheriting the rejected composition.
+
 ## [0.1.0] - 2026-10-15
 
 ### Added

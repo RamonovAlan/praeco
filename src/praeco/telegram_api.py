@@ -41,6 +41,7 @@ _MAX_OWNER_EXPORT_BYTES = 45_000_000
 OWNER_COMMANDS: tuple[tuple[str, str], ...] = (
     ("start", "Запустить бота и показать подсказку"),
     ("new", "Начать создание нового поста"),
+    ("text", "Использовать готовый текст без AI"),
     ("drafts", "Показать последние черновики"),
     ("settings", "Показать настройки и лимиты"),
     ("style", "Управлять правилами текста и визуала"),
@@ -372,6 +373,7 @@ class BotApiTelegramSender(TelegramSender):
                 delivery.body is None
                 or delivery.revision_callback is None
                 or delivery.manual_edit_callback is None
+                or delivery.owner_upload_callback is None
             ):
                 raise TelegramPayloadError("text review payload is incomplete")
             return self._client.send_message(
@@ -604,6 +606,7 @@ class RussianStatusResponder:
                 "Отправьте мысль текстом или голосом. Я подготовлю черновик и покажу "
                 "кнопки согласования.\n\n"
                 "/new — новая мысль\n"
+                "/text <пост> — использовать готовый текст без AI\n"
                 "/drafts — последние черновики\n"
                 "/settings — настройки и лимиты\n"
                 "/style — постоянные правила текста и визуала\n"
@@ -634,6 +637,9 @@ class RussianStatusResponder:
             ),
             DispatchOutcome.TEXT_MANUALLY_EDITED: (
                 "Текст сохранён без AI-вызова. Отправляю новую версию на проверку."
+            ),
+            DispatchOutcome.OWNER_TEXT_STORED: (
+                "Готовый текст сохранён без AI-вызова и отправлен на проверку."
             ),
             DispatchOutcome.IMAGE_JOB_QUEUED: (
                 "Текст утверждён. Готовлю одно изображение."
@@ -959,6 +965,12 @@ def _text_review_keyboard(delivery: TelegramDelivery) -> dict[str, object]:
     return {
         "inline_keyboard": [
             [{"text": "Утвердить текст", "callback_data": delivery.approve_callback}],
+            [
+                {
+                    "text": "Утвердить и загрузить своё фото",
+                    "callback_data": delivery.owner_upload_callback,
+                }
+            ],
             [{"text": "Дать правки", "callback_data": delivery.revision_callback}],
             [
                 {

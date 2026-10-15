@@ -1,5 +1,7 @@
 """Single-worker execution that persists provider results before delivery."""
 
+# ruff: noqa: RUF001 -- Russian owner revision markers are intentional.
+
 import hashlib
 import sqlite3
 from dataclasses import dataclass
@@ -568,7 +570,7 @@ class SingleWorker:
             raise RuntimeError("approved text image brief changed after provider call")
         revision = self._image_editing.get_revision_request(job_id=lease.job_id)
         source_image_path = None
-        prompt = text.image_brief
+        prompt = f"Existing visual brief:\n{text.image_brief}"
         width = 1536
         height = 1024
         if revision is not None:
@@ -583,11 +585,20 @@ class SingleWorker:
             )
             if source.source_text_version != lease.input_version:
                 raise WorkerInputError("source image belongs to another text version")
-            source_image_path = self._verified_image_path(
-                local_path=source.local_path,
-                expected_sha256=source.sha256,
-            )
-            prompt = f"{text.image_brief}\nRequested revision: {revision.comment}"
+            fresh_concept = _requires_fresh_image_concept(revision.comment)
+            if not fresh_concept:
+                source_image_path = self._verified_image_path(
+                    local_path=source.local_path,
+                    expected_sha256=source.sha256,
+                )
+            prompt += f"\n\nOwner revision request:\n{revision.comment}"
+            if fresh_concept:
+                prompt += (
+                    "\n\nThis is a concept reset. Generate from scratch. Do not reuse "
+                    "the previous subject, metaphor, objects, composition, geometry, "
+                    "layout, or camera angle. Choose a clearly different semantic angle "
+                    "from the approved post."
+                )
             width = source.width
             height = source.height
         image_rules = self._owner.active_rule_texts(scope="image")
@@ -597,6 +608,7 @@ class SingleWorker:
             )
         request = ImageGenerationRequest(
             brief=text.image_brief,
+            approved_text=text.body,
             prompt=prompt,
             width=width,
             height=height,
@@ -783,6 +795,38 @@ def _required_draft_id(lease: JobLease) -> str:
     if lease.draft_id is None:
         raise WorkerInputError("job has no draft")
     return lease.draft_id
+
+
+def _requires_fresh_image_concept(comment: str) -> bool:
+    normalized = " ".join(comment.casefold().replace("ё", "е").split())
+    markers = (
+        "другая концепц",
+        "другой концепт",
+        "измени концепц",
+        "измени концепт",
+        "изменить концепц",
+        "изменить концепт",
+        "новая концепц",
+        "новый концепт",
+        "совсем другая",
+        "совсем другой",
+        "полностью измен",
+        "полностью помен",
+        "с нуля",
+        "заново",
+        "попробуй иначе",
+        "не относится к текст",
+        "не понятно как это к текст",
+        "непонятно как это к текст",
+        "перечитай",
+        "different concept",
+        "new concept",
+        "change the concept",
+        "start over",
+        "from scratch",
+        "completely change",
+    )
+    return any(marker in normalized for marker in markers)
 
 
 def _style_version(style_rules: tuple[str, ...]) -> str:

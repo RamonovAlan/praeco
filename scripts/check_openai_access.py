@@ -27,7 +27,7 @@ def main() -> int:
         "https://api.openai.com/v1/models",
         headers={
             "Authorization": f"Bearer {api_key}",
-            "User-Agent": "Praeco/0.1.0",
+            "User-Agent": "Praeco/0.1.1",
         },
         method="GET",
     )

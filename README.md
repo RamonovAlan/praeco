@@ -47,7 +47,10 @@ of the LinkedIn post body.
 - One allowlisted owner and one private Telegram chat.
 - Text and bounded voice input with transcription.
 - Immutable text and image versions with stale-button rejection.
-- AI revisions, manual text editing, and owner-supplied PNG/JPEG images.
+- AI revisions, manual text editing, direct `/text <post>` import, and
+  owner-supplied PNG/JPEG images before or after image generation.
+- Semantic image concept resets that stop reusing a rejected composition when
+  the owner explicitly asks for a different concept.
 - Original image storage with checksums; Telegram receives only a preview.
 - Exact final snapshot bound to the approved text and image versions.
 - Official LinkedIn OIDC, Images API, and Posts API integration.
@@ -178,8 +181,8 @@ private content.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Near-term work focuses on a safe `v0.1.0` release
-and feedback from real self-hosted installations. Additional official Publisher
+See [ROADMAP.md](ROADMAP.md). The current public patch release is `v0.1.1`.
+Additional official Publisher
 adapters come only after the LinkedIn-first baseline is stable.
 
 ## Contact and support

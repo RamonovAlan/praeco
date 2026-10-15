@@ -145,6 +145,7 @@ def test_generates_valid_image_and_prices_usage() -> None:
     result = provider(transport).generate_image(
         ImageGenerationRequest(
             brief="Спокойная рабочая сцена",
+            approved_text="Утверждённый текст поста",
             prompt="Первая версия",
             width=1536,
             height=1024,
@@ -158,6 +159,7 @@ def test_generates_valid_image_and_prices_usage() -> None:
     assert (method, path) == ("json", "/images/generations")
     assert isinstance(payload, dict)
     assert payload["quality"] == "low"
+    assert "Утверждённый текст поста" in str(payload["prompt"])
 
 
 def test_rejects_refusal_without_leaking_output() -> None:

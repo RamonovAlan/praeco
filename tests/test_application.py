@@ -155,7 +155,7 @@ def test_check_command_applies_migrations_without_network_calls(
     with sqlite3.connect(tmp_path / "data" / "praeco.sqlite3") as connection:
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 13
+        ).fetchone()[0] == 14
 
 
 def test_linkedin_oauth_config_is_complete_validated_and_redacted(

@@ -143,6 +143,7 @@ class ImageGenerationRequest:
     """One approved brief and optional source image for generation or editing."""
 
     brief: str = field(repr=False)
+    approved_text: str = field(repr=False)
     prompt: str = field(repr=False)
     width: int
     height: int
@@ -150,6 +151,7 @@ class ImageGenerationRequest:
 
     def __post_init__(self) -> None:
         _require_text(self.brief, "brief")
+        _require_text(self.approved_text, "approved_text")
         _require_text(self.prompt, "prompt")
         if self.width <= 0 or self.height <= 0:
             raise ValueError("image dimensions must be positive")

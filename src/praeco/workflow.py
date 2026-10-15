@@ -111,6 +111,13 @@ class DraftWorkflow:
         """Bind a later revision or upload to the displayed image version."""
 
         self._authorize(actor_id)
+        if self.state is DraftState.TEXT_APPROVED:
+            self._require_current_version("image", version, self.current_image_version)
+            self.state = DraftState.WAITING_FOR_INPUT
+            return
+        if version == 0:
+            self._require_current_version("image", version, self.current_image_version)
+            raise InvalidTransitionError("initial image upload requires approved text")
         self._require_current_version("image", version, self.current_image_version)
         self._require_state(DraftState.IMAGE_REVIEW)
         self.state = DraftState.WAITING_FOR_INPUT
@@ -119,6 +126,11 @@ class DraftWorkflow:
         """Return an abandoned image binding to its unchanged review version."""
 
         self._authorize(actor_id)
+        if version == 0:
+            self._require_current_version("image", version, self.current_image_version)
+            self._require_state(DraftState.WAITING_FOR_INPUT)
+            self.state = DraftState.TEXT_APPROVED
+            return
         self._require_current_version("image", version, self.current_image_version)
         self._require_state(DraftState.WAITING_FOR_INPUT)
         self.state = DraftState.IMAGE_REVIEW

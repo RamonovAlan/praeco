@@ -255,6 +255,7 @@ def test_client_configures_russian_owner_command_menu() -> None:
     assert {entry["command"] for entry in commands} == {
         "start",
         "new",
+            "text",
         "drafts",
         "settings",
         "style",
@@ -330,6 +331,7 @@ def test_text_sender_uses_russian_version_bound_keyboard() -> None:
         approve_callback="txt_ok:tg-1:2",
         revision_callback="txt_rev:tg-1:2",
         manual_edit_callback="txt_edit:tg-1:2",
+        owner_upload_callback="txt_upload:tg-1:2",
         cancel_callback="txt_cancel:tg-1:2",
         body="Synthetic post",
     )
@@ -344,6 +346,12 @@ def test_text_sender_uses_russian_version_bound_keyboard() -> None:
     assert isinstance(keyboard, dict)
     assert keyboard["inline_keyboard"] == [
         [{"text": "Утвердить текст", "callback_data": "txt_ok:tg-1:2"}],
+        [
+            {
+                "text": "Утвердить и загрузить своё фото",
+                "callback_data": "txt_upload:tg-1:2",
+            }
+        ],
         [{"text": "Дать правки", "callback_data": "txt_rev:tg-1:2"}],
         [{"text": "Изменить вручную", "callback_data": "txt_edit:tg-1:2"}],
         [{"text": "Отменить", "callback_data": "txt_cancel:tg-1:2"}],

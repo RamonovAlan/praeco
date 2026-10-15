@@ -1,4 +1,6 @@
 import sqlite3
+
+# ruff: noqa: RUF001 -- Russian owner-facing test text is intentional.
 from decimal import Decimal
 from pathlib import Path
 
@@ -148,6 +150,74 @@ def test_command_is_claimed_without_creating_work_and_duplicate_is_ignored(
     assert first.outcome is DispatchOutcome.WELCOME
     assert duplicate.outcome is DispatchOutcome.DUPLICATE
     assert connection.execute("SELECT COUNT(*) FROM drafts").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+
+
+def test_owner_text_command_creates_review_without_paid_job(tmp_path: Path) -> None:
+    dispatcher, connection = setup(tmp_path)
+
+    result = dispatch(
+        dispatcher,
+        text_event(
+            update_id=2,
+            text="/text Готовый авторский пост без генерации.",
+            command="/text",
+        ),
+    )
+
+    assert result.outcome is DispatchOutcome.OWNER_TEXT_STORED
+    assert DraftRepository(connection).get("tg-2").state is DraftState.TEXT_REVIEW
+    stored = connection.execute(
+        "SELECT body, provider_model FROM text_versions WHERE draft_id = 'tg-2'"
+    ).fetchone()
+    assert tuple(stored) == ("Готовый авторский пост без генерации.", None)
+    assert connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT kind FROM telegram_outbox WHERE draft_id = 'tg-2'"
+    ).fetchone()[0] == "TEXT_REVIEW"
+
+
+def test_owner_can_upload_first_image_without_generation(tmp_path: Path) -> None:
+    dispatcher, connection = setup(tmp_path)
+    dispatch(
+        dispatcher,
+        text_event(
+            update_id=3,
+            text="/text Готовый пост со своей фотографией.",
+            command="/text",
+        ),
+    )
+    requested = dispatch(
+        dispatcher,
+        callback_event(update_id=4, data="txt_upload:tg-3:1"),
+    )
+    staged_path = tmp_path / "media" / ".staging" / "owner-first.png"
+    staged_path.parent.mkdir(parents=True)
+    staged_path.write_bytes(b"synthetic-owner-image")
+
+    stored = dispatch(
+        dispatcher,
+        TelegramImageInput(
+            update_id=5,
+            actor_id=OWNER_ID,
+            chat_id=OWNER_ID,
+            message_id=5,
+            file_id="owner-first-file",
+            file_unique_id="owner-first-stable",
+            mime_type="image/png",
+            staged_path=staged_path,
+            width=1536,
+            height=1024,
+            file_size=21,
+            reply_to_message_id=4,
+        ),
+    )
+
+    assert requested.outcome is DispatchOutcome.OWNER_IMAGE_UPLOAD_REQUESTED
+    assert stored.outcome is DispatchOutcome.OWNER_IMAGE_STORED
+    workflow = DraftRepository(connection).get("tg-3")
+    assert workflow.state is DraftState.IMAGE_REVIEW
+    assert workflow.current_image_version == 1
     assert connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
 
 

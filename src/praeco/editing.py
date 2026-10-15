@@ -272,11 +272,13 @@ class ImageEditingRepository:
 
         if (
             owner_id <= 0
-            or base_image_version <= 0
+            or base_image_version < 0
             or source_text_version <= 0
             or prompt_message_id < 0
         ):
             raise ValueError("image binding identifiers are invalid")
+        if mode is ImageInputMode.AI_REVISION and base_image_version == 0:
+            raise ValueError("AI image revision requires an existing image")
         if not draft_id.strip() or not now.strip():
             raise ValueError("draft_id and now must not be blank")
         with immediate_transaction(self._connection):

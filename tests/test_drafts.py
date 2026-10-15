@@ -32,6 +32,7 @@ def repository(tmp_path: Path) -> DraftRepository:
         11,
         12,
         13,
+        14,
     )
     return DraftRepository(connection)
 

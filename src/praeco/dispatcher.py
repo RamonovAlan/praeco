@@ -46,7 +46,7 @@ from praeco.telegram import (
 from praeco.workflow import UnauthorizedActorError, WorkflowError
 
 _CALLBACK_PATTERN = re.compile(
-    r"^(?P<action>txt_ok|txt_rev|txt_edit|txt_cancel|txt_retry|img_ok|img_rev|"
+    r"^(?P<action>txt_ok|txt_upload|txt_rev|txt_edit|txt_cancel|txt_retry|img_ok|img_rev|"
     r"img_upload|img_text|img_cancel|pub):"
     r"(?P<draft_id>[A-Za-z0-9_-]{1,40}):(?P<version>[0-9]{1,9})"
     r"(?::(?P<image_version>[0-9]{1,9}))?$"
@@ -72,6 +72,7 @@ class DispatchOutcome(StrEnum):
     MANUAL_EDIT_REQUESTED = "MANUAL_EDIT_REQUESTED"
     TEXT_REVISION_JOB_QUEUED = "TEXT_REVISION_JOB_QUEUED"
     TEXT_MANUALLY_EDITED = "TEXT_MANUALLY_EDITED"
+    OWNER_TEXT_STORED = "OWNER_TEXT_STORED"
     TRANSCRIPTION_JOB_QUEUED = "TRANSCRIPTION_JOB_QUEUED"
     REVISION_TRANSCRIPTION_JOB_QUEUED = "REVISION_TRANSCRIPTION_JOB_QUEUED"
     IMAGE_JOB_QUEUED = "IMAGE_JOB_QUEUED"
@@ -225,7 +226,9 @@ class TelegramDispatcher:
         billing_month: str,
     ) -> DispatchResult:
         if event.command is not None:
-            if event.command == "/new":
+            if event.command == "/new" or (
+                event.command == "/text" and bool(_command_argument(event.text))
+            ):
                 active_voice = self._voice_editing.get_active(owner_id=self._owner_id)
                 if active_voice is not None:
                     return DispatchResult(
@@ -357,6 +360,58 @@ class TelegramDispatcher:
         now: str,
         billing_month: str,
     ) -> DispatchResult | None:
+        if event.command == "/text":
+            body = _command_argument(event.text)
+            if not body:
+                return DispatchResult(
+                    outcome=DispatchOutcome.OWNER_TEXT_STORED,
+                    owner_message=(
+                        "Пришлите готовый пост одной командой: /text <текст поста>. "
+                        "AI для текста вызван не будет."
+                    ),
+                )
+            draft_id = _draft_id(event.update_id)
+            self._drafts.create(
+                identity=DraftIdentity(
+                    draft_id=draft_id,
+                    owner_id=self._owner_id,
+                    source_kind="text",
+                    source_text=body,
+                    language="ru",
+                ),
+                now=now,
+            )
+            self._drafts.start_text_generation(
+                draft_id=draft_id,
+                actor_id=self._owner_id,
+                now=now,
+            )
+            self._drafts.record_text(
+                draft_id=draft_id,
+                actor_id=self._owner_id,
+                version=1,
+                body=body,
+                revision_comment=None,
+                prompt_version=None,
+                style_version=None,
+                provider_model=None,
+                image_brief="Derive the visual concept from the approved owner text.",
+                now=now,
+            )
+            self._deliveries.enqueue(
+                DeliveryRequest(
+                    kind=DeliveryKind.TEXT_REVIEW,
+                    draft_id=draft_id,
+                    chat_id=event.chat_id,
+                    text_version=1,
+                    deduplication_key=f"telegram:text-review:{draft_id}:1",
+                    now=now,
+                )
+            )
+            return DispatchResult(
+                outcome=DispatchOutcome.OWNER_TEXT_STORED,
+                draft_id=draft_id,
+            )
         if event.command == "/drafts":
             drafts = self._owner.recent_drafts(owner_id=self._owner_id)
             return DispatchResult(
@@ -771,16 +826,24 @@ class TelegramDispatcher:
         try:
             with final_path.open("rb") as image_file:
                 sha256 = hashlib.file_digest(image_file, "sha256").hexdigest()
-            base_image = self._drafts.get_image_version(
-                draft_id=pending.draft_id,
-                version=pending.base_image_version,
-            )
+            if pending.base_image_version == 0:
+                source_text = self._drafts.get_text_version(
+                    draft_id=pending.draft_id,
+                    version=pending.source_text_version,
+                )
+                brief = source_text.image_brief or source_text.body
+            else:
+                base_image = self._drafts.get_image_version(
+                    draft_id=pending.draft_id,
+                    version=pending.base_image_version,
+                )
+                brief = base_image.brief
             self._drafts.record_owner_image(
                 draft_id=pending.draft_id,
                 actor_id=event.actor_id,
                 version=version,
                 source_text_version=pending.source_text_version,
-                brief=base_image.brief,
+                brief=brief,
                 local_path=str(relative_path),
                 sha256=sha256,
                 mime_type=event.mime_type,
@@ -950,6 +1013,33 @@ class TelegramDispatcher:
                 draft_id=action.draft_id,
                 queue_outcome=queued.outcome,
                 job_id=queued.job_id,
+            )
+
+        if action.name == "txt_upload":
+            workflow = self._drafts.approve_text(
+                draft_id=action.draft_id,
+                actor_id=event.actor_id,
+                version=action.version,
+                now=now,
+            )
+            self._drafts.wait_for_image_input(
+                draft_id=action.draft_id,
+                actor_id=event.actor_id,
+                version=workflow.current_image_version,
+                now=now,
+            )
+            self._image_editing.bind(
+                owner_id=event.actor_id,
+                draft_id=action.draft_id,
+                base_image_version=workflow.current_image_version,
+                source_text_version=workflow.current_text_version,
+                mode=ImageInputMode.OWNER_UPLOAD,
+                prompt_message_id=event.message_id,
+                now=now,
+            )
+            return DispatchResult(
+                outcome=DispatchOutcome.OWNER_IMAGE_UPLOAD_REQUESTED,
+                draft_id=action.draft_id,
             )
 
         if action.name == "img_ok":
